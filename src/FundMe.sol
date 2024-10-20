@@ -4,13 +4,13 @@ pragma solidity 0.8.24;
 
 import {PriceConverter} from "./PriceConverter.sol";
 
+error FundMe__NotOwner();
+error FundMe__NotEnoughEth(uint256 sent, uint256 required);
 // gas: 707,396 non constant
 // gas: 687,023 constant
 // gas: 644,831 immutable
-contract FundMe {
-    error FundMe__NotOwner();
-    error FundMe__NotEnoughEth(uint256 sent, uint256 required);
 
+contract FundMe {
     using PriceConverter for uint256;
 
     uint256 public constant MINIMUM_USD = 5e18;
@@ -33,6 +33,21 @@ contract FundMe {
 
         // What's revert
         // Undo any actions that have been done, and send the remaining gas back
+    }
+
+    function cheaperWithdraw() public onlyOwner {
+        uint256 fundersLength = s_funders.length;
+
+        for (uint256 funderIndex = 0; funderIndex < fundersLength; funderIndex++) {
+            address funder = s_funders[funderIndex];
+            addressToAmountFunded[funder] = 0;
+        }
+
+        // Reset funders array to a new address[] of length 0
+        s_funders = new address[](0);
+
+        // withdraw funds
+        payable(msg.sender).transfer(address(this).balance);
     }
 
     function withdraw() public onlyOwner {

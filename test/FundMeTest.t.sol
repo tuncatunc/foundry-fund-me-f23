@@ -3,7 +3,7 @@
 pragma solidity 0.8.24;
 
 import {Test, console} from "forge-std/Test.sol";
-import {FundMe} from "../src/FundMe.sol";
+import {FundMe, FundMe__NotEnoughEth} from "../src/FundMe.sol";
 import {DeployFundMe} from "../script/DeployFundMe.s.sol";
 
 contract FundMeTest is Test {
@@ -11,6 +11,7 @@ contract FundMeTest is Test {
     DeployFundMe deployFundMe;
     address private constant USER = address(0x123);
     uint256 private constant FUND_AMOUNT = 10 ether;
+    uint256 private constant GAS_PRICE = 1e9; // 1 Gwei
 
     function setUp() external {
         deployFundMe = new DeployFundMe();
@@ -35,7 +36,7 @@ contract FundMeTest is Test {
     }
 
     function testFundRevertsWithoutEnoughEth() public {
-        vm.expectRevert(abi.encodeWithSelector(FundMe.FundMe__NotEnoughEth.selector, 0.001 ether, 5e18));
+        vm.expectRevert(abi.encodeWithSelector(FundMe__NotEnoughEth.selector, 0.001 ether, 5e18));
         // FundMeTest contract is deployer and owner of FundMe contract
         fundMe.fund{value: 0.001 ether}();
     }
@@ -106,8 +107,47 @@ contract FundMeTest is Test {
         uint256 startingFundMeBalance = address(fundMe).balance; // Contract Balance
 
         // Action
+        uint256 gasStart = gasleft();
+        vm.txGasPrice(GAS_PRICE);
         vm.prank(fundMe.getOwner());
         fundMe.withdraw();
+
+        uint256 gasEnd = gasleft();
+        uint256 gasUsed = gasStart - gasEnd;
+        uint256 gasCost = gasUsed * tx.gasprice;
+        console.log("gasCost", gasCost);
+
+        // Assert
+        uint256 endingOwnerBalance = address(fundMe.getOwner()).balance;
+        uint256 endingFundMeBalance = address(fundMe).balance;
+
+        assertEq(endingFundMeBalance, 0);
+        assertEq(startingFundMeBalance + startingOwnerBalance, endingOwnerBalance);
+    }
+
+    function testWithdrawFromMultipleFundersCheaper() public funded {
+        // Arrange
+        uint160 noFunders = 10;
+        uint160 startFunderIndex = 2;
+
+        for (uint160 i = startFunderIndex; i < noFunders; i++) {
+            hoax(address(i), FUND_AMOUNT);
+            fundMe.fund{value: FUND_AMOUNT}();
+        }
+
+        uint256 startingOwnerBalance = address(fundMe.getOwner()).balance; // Contract Owner Balance
+        uint256 startingFundMeBalance = address(fundMe).balance; // Contract Balance
+
+        // Action
+        uint256 gasStart = gasleft();
+        vm.txGasPrice(GAS_PRICE);
+        vm.prank(fundMe.getOwner());
+        fundMe.cheaperWithdraw();
+
+        uint256 gasEnd = gasleft();
+        uint256 gasUsed = gasStart - gasEnd;
+        uint256 gasCost = gasUsed * tx.gasprice;
+        console.log("gasCost", gasCost);
 
         // Assert
         uint256 endingOwnerBalance = address(fundMe.getOwner()).balance;
