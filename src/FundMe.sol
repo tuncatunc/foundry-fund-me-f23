@@ -77,7 +77,8 @@ contract FundMe {
     }
 
     modifier enoughEth(uint256 _sent, uint256 _required) {
-        if (_sent < _required) {
+        uint256 sentUsd = msg.value.getConversionRate(s_priceFeed);
+        if (sentUsd < _required) {
             revert FundMe__NotEnoughEth(_sent, _required);
         }
         _;
